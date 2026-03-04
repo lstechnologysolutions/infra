@@ -1,6 +1,13 @@
 # @lsts_tech/infra
 
+[![npm version](https://img.shields.io/npm/v/%40lsts_tech%2Finfra?label=npm&color=cb3837)](https://www.npmjs.com/package/@lsts_tech/infra)
+[![npm downloads](https://img.shields.io/npm/dm/%40lsts_tech%2Finfra?label=downloads)](https://www.npmjs.com/package/@lsts_tech/infra)
+[![Publish workflow](https://github.com/lstechnologysolutions/lstech.solutions/actions/workflows/publish-infra.yml/badge.svg)](https://github.com/lstechnologysolutions/lstech.solutions/actions/workflows/publish-infra.yml)
+[![Public repository](https://img.shields.io/badge/public%20repo-lstechnologysolutions%2Finfra-181717?logo=github)](https://github.com/lstechnologysolutions/infra)
+
 Reusable, white-label SST v3 infrastructure primitives for AWS deployments from monorepos.
+
+Public package repository: [https://github.com/lstechnologysolutions/infra](https://github.com/lstechnologysolutions/infra)
 
 `@lsts_tech/infra` focuses on portability:
 
@@ -12,7 +19,7 @@ Reusable, white-label SST v3 infrastructure primitives for AWS deployments from 
 
 ## Version Scope
 
-`v1.0.0` provider support: **AWS only**.
+`v1.0.1` provider support: **AWS only**.
 
 ## Install
 

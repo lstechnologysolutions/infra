@@ -2,6 +2,16 @@
 
 All notable changes to `@lsts_tech/infra` will be documented in this file.
 
+## [1.0.1] - 2026-03-04
+
+### Changed
+- Improved README with publish status badges (npm version/downloads, publish workflow, public repository).
+- Added explicit public repository link to `https://github.com/lstechnologysolutions/infra`.
+- Updated version scope text to reflect `v1.0.1`.
+
+### Fixed
+- Added Node.js type definitions for CI type-check compatibility in publish workflow.
+
 ## [1.0.0] - 2026-03-02
 
 ### 🎉 Initial Public Release
