@@ -1,0 +1,22 @@
+# SST / build state
+.sst/
+.turbo/
+
+# Source TypeScript (we publish compiled dist/)
+stacks/
+bin/
+
+# Environment files
+.env
+.env.*
+
+# Git / editor
+.git/
+.vscode/
+.github/
+
+# Development config
+sst.config.ts
+sst-env.d.ts
+infra.config.ts
+infra.config.js

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pipeline Schema",
+  "description": "Defines a minimal pipeline configuration model that the infra package expects for creating CodePipeline/CodeBuild resources.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Logical name for the pipeline (eg. web-cicd)"
+    },
+    "branch": {
+      "type": "string",
+      "description": "Git branch the pipeline will build and deploy"
+    },
+    "stage": {
+      "type": "string",
+      "description": "SST stage to deploy (eg. dev, production)"
+    },
+    "buildSpecPath": {
+      "type": "string",
+      "description": "Path (in repo) to a buildspec file used by CodeBuild"
+    }
+  },
+  "required": ["name", "branch", "stage"]
+}

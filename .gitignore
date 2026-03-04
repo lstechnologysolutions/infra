@@ -1,0 +1,25 @@
+# Build output
+dist/
+
+# SST state
+.sst/
+state.json
+Pulumi.*.yaml
+
+# Node
+node_modules/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Tarball
+*.tgz

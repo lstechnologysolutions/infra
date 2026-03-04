@@ -1,0 +1,132 @@
+# buildspec.yml — AWS CodeBuild specification for SST deployments
+#
+# This file is used by the CodePipeline construct (Pipeline.ts).
+# It runs inside an Amazon Linux 2023 container with Node.js pre-installed.
+#
+# Environment variables injected by CodeBuild:
+#   SST_STAGE     — The SST stage to deploy (e.g., "production", "dev")
+#   NODE_VERSION  — Node.js version to install (default: "22")
+#   PNPM_VERSION  — pnpm version to install (default: "9.15.0")
+#   INFRA_PATH    — Path to the infra package (default: "packages/infra")
+
+version: 0.2
+
+env:
+  variables:
+    SST_STAGE: "dev"
+    NODE_VERSION: "22"
+    PNPM_VERSION: "9.15.0"
+    INFRA_PATH: "packages/infra"
+    # Domain configuration — set to your root domain
+    DOMAIN_ROOT: "example.com"
+    # Project prefix for pipeline/resource naming
+    PROJECT_PREFIX: "myapp"
+    # Lambda function prefix for orphan cleanup
+    PREFIX: "myapp"
+    # Optional stage-domain overrides used by DNS helper scripts
+    DOMAIN_PRODUCTION: "example.com"
+    DOMAIN_DEV: "dev.example.com"
+    DOMAIN_MOBILE: "mobile.example.com"
+    # Polling for CloudFront distribution deployment (seconds)
+    POLL_TIMEOUT: "600"
+    POLL_INTERVAL: "15"
+    # Optionally skip the Route53 DNS check if DNS is managed externally
+    SKIP_DNS_CHECK: "false"
+    # Automatically remove conflicting A/CNAME/ALIAS records before deploy
+    AUTO_REMOVE_CONFLICTING_DNS: "true"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      # Ensure exact Node version required by repo (package.json engines)
+      - echo "Checking for 'n' (node version manager)"
+      - if command -v n >/dev/null 2>&1; then echo "'n' already installed"; else echo "Installing 'n'"; npm install -g n || npm install -g n --force; fi
+      - echo "Switching Node to 22.22.0"
+      - n 22.22.0
+      - node --version
+
+      # Enable pnpm via corepack (built into Node.js, avoids PATH issues)
+      - corepack enable pnpm
+      - corepack prepare pnpm@${PNPM_VERSION} --activate
+      - pnpm --version
+
+      # Configure pnpm store for caching
+      - pnpm config set store-dir /root/.pnpm-store
+
+      # Install all workspace dependencies (frozen lockfile for reproducibility)
+      - pnpm install --frozen-lockfile
+
+  pre_build:
+    commands:
+      - echo "Stage    = ${SST_STAGE}"
+      - echo "Node     = $(node --version)"
+      - echo "pnpm     = $(pnpm --version)"
+      - echo "Infra    = ${INFRA_PATH}"
+      - echo "Running pre-deploy checks..."
+      - |
+        if [ -f "${INFRA_PATH}/scripts/predeploy-checks.sh" ]; then
+          chmod +x "${INFRA_PATH}/scripts/predeploy-checks.sh" || true
+          "${INFRA_PATH}/scripts/predeploy-checks.sh" ${SST_STAGE}
+        elif [ -f "./scripts/predeploy-checks.sh" ]; then
+          chmod +x "./scripts/predeploy-checks.sh" || true
+          ./scripts/predeploy-checks.sh ${SST_STAGE}
+        else
+          echo "No predeploy checks script found at ${INFRA_PATH}/scripts/predeploy-checks.sh or ./scripts/predeploy-checks.sh"
+        fi
+
+  build:
+    commands:
+      # Deploy using SST from the infra package directory
+      - cd ${INFRA_PATH}
+      - |
+        set +e
+        npx sst deploy --stage ${SST_STAGE}
+        DEPLOY_EXIT_CODE=$?
+        set -e
+        if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+          echo "❌ SST deploy failed with exit code $DEPLOY_EXIT_CODE! Attempting to revert to previous state..."
+          
+          # CodePipeline might perform a shallow clone, so ensure we have history
+          git fetch --depth=2 || true
+          
+          # Checkout the previous commit
+          if git checkout HEAD^1; then
+            echo "📦 Re-installing dependencies for the previous commit..."
+            # Move back to root for pnpm install
+            cd ../..
+            pnpm install --frozen-lockfile || true
+            cd ${INFRA_PATH}
+            
+            echo "🔄 Rolling back deployment to previous commit..."
+            npx sst deploy --stage ${SST_STAGE} || echo "⚠️ Rollback deploy also failed!"
+          else
+            echo "⚠️ Could not checkout previous commit. Rollback skipped."
+          fi
+          
+          # Exit with the original failure code so the pipeline correctly reports as FAILED
+          exit $DEPLOY_EXIT_CODE
+        fi
+
+  post_build:
+    commands:
+      - echo "✅ SST deploy completed for stage ${SST_STAGE}"
+      - echo "Running post-deploy DNS sync"
+      - |
+        if [ -f "${INFRA_PATH}/scripts/postdeploy-update-dns.sh" ]; then
+          chmod +x "${INFRA_PATH}/scripts/postdeploy-update-dns.sh" || true
+          "${INFRA_PATH}/scripts/postdeploy-update-dns.sh" ${SST_STAGE} || echo "post-deploy DNS sync failed"
+        elif [ -f "./scripts/postdeploy-update-dns.sh" ]; then
+          chmod +x "./scripts/postdeploy-update-dns.sh" || true
+          ./scripts/postdeploy-update-dns.sh ${SST_STAGE} || echo "post-deploy DNS sync failed"
+        else
+          echo "No post-deploy DNS sync script found; skipping"
+        fi
+
+cache:
+  paths:
+    # Cache pnpm store between builds for faster installs
+    - /root/.pnpm-store/**/*
+    # Cache SST state
+    - packages/infra/.sst/**/*

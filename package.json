@@ -1,0 +1,102 @@
+{
+  "name": "@lsts_tech/infra",
+  "version": "1.0.0",
+  "description": "Reusable SST v3 infrastructure constructs for deploying Next.js and Expo web apps from monorepos.",
+  "type": "module",
+  "license": "MIT",
+  "author": "LSTS Solutions",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lstechnologysolutions/infra.git"
+  },
+  "homepage": "https://github.com/lstechnologysolutions/infra#readme",
+  "bugs": {
+    "url": "https://github.com/lstechnologysolutions/infra/issues"
+  },
+  "keywords": [
+    "sst",
+    "infrastructure",
+    "aws",
+    "nextjs",
+    "codepipeline",
+    "monorepo",
+    "turborepo",
+    "iac",
+    "cloudfront",
+    "route53",
+    "lambda",
+    "opennext",
+    "expo",
+    "expo-web",
+    "static-site",
+    "white-label"
+  ],
+  "main": "./dist/stacks/index.js",
+  "types": "./dist/stacks/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/stacks/index.d.ts",
+      "import": "./dist/stacks/index.js"
+    },
+    "./stacks/Dns": {
+      "types": "./dist/stacks/Dns.d.ts",
+      "import": "./dist/stacks/Dns.js"
+    },
+    "./stacks/NextSite": {
+      "types": "./dist/stacks/NextSite.d.ts",
+      "import": "./dist/stacks/NextSite.js"
+    },
+    "./stacks/ExpoSite": {
+      "types": "./dist/stacks/ExpoSite.d.ts",
+      "import": "./dist/stacks/ExpoSite.js"
+    },
+    "./stacks/Pipeline": {
+      "types": "./dist/stacks/Pipeline.d.ts",
+      "import": "./dist/stacks/Pipeline.js"
+    }
+  },
+  "bin": {
+    "lsts-infra": "dist/bin/init.js"
+  },
+  "files": [
+    "dist/",
+    "scripts/",
+    "schemas/",
+    "templates/",
+    "docs/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "prepublishOnly": "npm run build",
+    "dev": "sst dev",
+    "deploy": "sst deploy",
+    "deploy:dev": "sst deploy --stage dev",
+    "deploy:prod": "sst deploy --stage production",
+    "remove": "sst remove",
+    "console": "sst console",
+    "secrets": "sst secrets",
+    "ensure-secrets": "./scripts/ensure-secrets.sh",
+    "lint": "echo 'no lint configured'",
+    "check-types": "tsc --noEmit",
+    "clean": "rm -rf .sst dist node_modules"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "dependencies": {
+    "sst": "^3.7.0",
+    "@pulumi/aws": "^6.66.0",
+    "@pulumi/pulumi": "^3.145.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
