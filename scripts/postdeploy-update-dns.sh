@@ -38,6 +38,33 @@ DOMAIN=$(resolve_stage_domain)
 
 echo "Post-deploy DNS sync: stage=$STAGE domain=$DOMAIN region=$REGION"
 
+# Resolve the best hosted zone by progressively walking up parent domains.
+# Example: dev.airs.alternun.co -> airs.alternun.co -> alternun.co
+find_hosted_zone() {
+  local domain=$1
+  local clean=${domain%.}
+  IFS='.' read -r -a labels <<< "$clean"
+
+  if [ "${#labels[@]}" -lt 2 ]; then
+    return 1
+  fi
+
+  for ((i=0; i<=${#labels[@]}-2; i++)); do
+    local candidate
+    candidate=$(IFS='.'; echo "${labels[*]:i}")
+    local hz
+    hz=$(aws route53 list-hosted-zones-by-name --dns-name "$candidate" --query "HostedZones[?Name=='${candidate}.']|[0].Id" --output text 2>/dev/null || true)
+    if [ -n "$hz" ] && [ "$hz" != "None" ]; then
+      hz=${hz##*/}
+      hz=${hz##*/}
+      echo "${hz}|${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # Find and wait for the CloudFront distribution that has this alias
 echo "Searching for CloudFront distribution with alias ${DOMAIN} (will wait up to ${POLL_TIMEOUT}s)..."
 END=$((SECONDS + POLL_TIMEOUT))
@@ -88,13 +115,14 @@ if [ -z "$FOUND_DIST_ID" ]; then
 
   # Route53 hosted zone and apex records
   echo "\n-- Route53 apex records for ${DOMAIN_ROOT} --"
-  HZ=$(aws route53 list-hosted-zones-by-name --dns-name "${DOMAIN_ROOT}" --query 'HostedZones[0].Id' --output text || true)
-  if [ -n "$HZ" ] && [ "$HZ" != "None" ]; then
-    HZ_ID=${HZ##*/}
-    echo "Hosted zone ID: $HZ_ID"
+  HZ=$(find_hosted_zone "${DOMAIN}" || true)
+  if [ -n "$HZ" ]; then
+    HZ_ID=${HZ%%|*}
+    HZ_NAME=${HZ##*|}
+    echo "Hosted zone ID: $HZ_ID (zone: $HZ_NAME)"
     aws route53 list-resource-record-sets --hosted-zone-id "$HZ_ID" --query "ResourceRecordSets[?Name=='${DOMAIN}.']" --output json || true
   else
-    echo "No hosted zone for ${DOMAIN_ROOT} found in this account/region"
+    echo "No hosted zone for ${DOMAIN} (or parent domains) found in this account"
   fi
 
   echo "\nIf SST reported creating a site but no distribution exists, ensure SST had permissions to create CloudFront and ACM resources and that the deploy completed successfully."
@@ -120,15 +148,18 @@ if [ -z "$DIST_DOMAIN" ] || [ "$DIST_DOMAIN" = "null" ]; then
   fi
 fi
 
-# Lookup hosted zone id for base domain
-HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name "${DOMAIN_ROOT}" --query 'HostedZones[0].Id' --output text)
-if [ -z "$HOSTED_ZONE_ID" ] || [ "$HOSTED_ZONE_ID" = "None" ]; then
-  echo "Hosted zone for ${DOMAIN_ROOT} not found. Exiting." >&2
+# Lookup hosted zone id by exact domain, then parent fallback
+HOSTED_ZONE_INFO=$(find_hosted_zone "${DOMAIN}" || true)
+if [ -z "$HOSTED_ZONE_INFO" ]; then
+  echo "Hosted zone for ${DOMAIN} (or parent domains) not found. Exiting." >&2
   exit 1
 fi
 
-# Strip /hostedzone/ prefix if present
-HOSTED_ZONE_ID=${HOSTED_ZONE_ID#/hostedzone/}
+HOSTED_ZONE_ID=${HOSTED_ZONE_INFO%%|*}
+HOSTED_ZONE_NAME=${HOSTED_ZONE_INFO##*|}
+if [ "$HOSTED_ZONE_NAME" != "$DOMAIN_ROOT" ]; then
+  echo "Using parent hosted zone ${HOSTED_ZONE_NAME} for ${DOMAIN}"
+fi
 
 CHANGE_BATCH=$(mktemp)
 cat > "$CHANGE_BATCH" <<EOF

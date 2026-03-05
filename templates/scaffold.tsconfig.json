@@ -7,22 +7,16 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
-    "rootDir": ".",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "types": ["node"]
   },
   "include": [
-    "stacks/**/*.ts",
-    "bin/**/*.ts",
-    "src/**/*.ts",
+    "infra.config.ts",
+    "sst.config.ts",
     "sst-env.d.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    ".sst",
-    "templates"
+    ".sst"
   ]
 }

@@ -40,15 +40,48 @@ AUTO_REMOVE_CONFLICTING_DNS=${AUTO_REMOVE_CONFLICTING_DNS:-false}
 
 echo "Pre-deploy checks: region=$AWS_REGION stage=$STAGE domain=$DOMAIN_ROOT"
 
+# Resolve the best hosted zone by progressively walking up parent domains.
+# Example: dev.airs.alternun.co -> airs.alternun.co -> alternun.co
+find_hosted_zone() {
+  local domain=$1
+  local clean=${domain%.}
+  IFS='.' read -r -a labels <<< "$clean"
+
+  if [ "${#labels[@]}" -lt 2 ]; then
+    return 1
+  fi
+
+  for ((i=0; i<=${#labels[@]}-2; i++)); do
+    local candidate
+    candidate=$(IFS='.'; echo "${labels[*]:i}")
+    local hz
+    hz=$(aws route53 list-hosted-zones-by-name --dns-name "$candidate" --query "HostedZones[?Name=='${candidate}.']|[0].Id" --output text 2>/dev/null || true)
+    if [ -n "$hz" ] && [ "$hz" != "None" ]; then
+      hz=${hz##*/}
+      hz=${hz##*/}
+      echo "${hz}|${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 check_route53_conflict() {
   local name=$1
-  hz=$(aws route53 list-hosted-zones-by-name --dns-name "$DOMAIN_ROOT" --query 'HostedZones[0].Id' --output text 2>/dev/null || true)
-  if [ -z "$hz" ]; then
-    echo "WARN: Hosted zone for $DOMAIN_ROOT not found in $AWS_REGION"
+  local hz
+  local zone_domain
+  local resolved
+  resolved=$(find_hosted_zone "$name" || true)
+  if [ -z "$resolved" ]; then
+    echo "WARN: Hosted zone for $name (or parent) not found in $AWS_REGION"
     return 0
   fi
-  hz=${hz##*/}
-  hz=${hz##*/}
+  hz=${resolved%%|*}
+  zone_domain=${resolved##*|}
+  if [ "$zone_domain" != "$DOMAIN_ROOT" ]; then
+    echo "INFO: Using parent hosted zone '$zone_domain' for record '$name'"
+  fi
   # Only treat A/AAAA/CNAME or alias records as blocking records for web deploys.
   # Keep MX/TXT/NS/SOA since they are often required for email/zone setup and
   # should not block CloudFront/website deploys.

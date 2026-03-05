@@ -5,21 +5,20 @@
 [![Publish workflow](https://github.com/lstechnologysolutions/lstech.solutions/actions/workflows/publish-infra.yml/badge.svg)](https://github.com/lstechnologysolutions/lstech.solutions/actions/workflows/publish-infra.yml)
 [![Public repository](https://img.shields.io/badge/public%20repo-lstechnologysolutions%2Finfra-181717?logo=github)](https://github.com/lstechnologysolutions/infra)
 
-Reusable, white-label SST v3 infrastructure primitives for AWS deployments from monorepos.
+Reusable, white-label SST v3 infrastructure primitives for AWS monorepo deployments.
 
-Public package repository: [https://github.com/lstechnologysolutions/infra](https://github.com/lstechnologysolutions/infra)
+Public repository: [https://github.com/lstechnologysolutions/infra](https://github.com/lstechnologysolutions/infra)
 
-`@lsts_tech/infra` focuses on portability:
+## What It Supports
 
-- No hardcoded project domains/repos in package code
-- Environment-driven scaffolding for public repositories
-- CLI bootstrap for consistent setup (`npx @lsts_tech/infra init`)
-- Next.js (`sst.aws.Nextjs`) and Expo Web (`sst.aws.StaticSite`) support
-- AWS CodePipeline + CodeBuild CI/CD helpers
-
-## Version Scope
-
-`v1.0.1` provider support: **AWS only**.
+- AWS provider (v1.x)
+- Next.js and Expo Web deployments
+- `expo-web` scaffold mode (no Next.js resources/secrets)
+- Runtime-driven pipeline definitions (env + optional `config/pipelines.json`)
+- Explicit pipeline mutation gate (`INFRA_CREATE_PIPELINES=true`)
+- `doctor` readiness checks (`npx @lsts_tech/infra doctor`)
+- Optional pipeline IAM mode: `admin` or `least-privilege`
+- Hosted-zone parent fallback support for delegated subdomains
 
 ## Install
 
@@ -38,18 +37,19 @@ npx @lsts_tech/infra init \
   --project myapp \
   --domain example.com \
   --repo myorg/myrepo \
-  --pipelines production,dev
+  --profile next-expo \
+  --pipelines production,dev,mobile
 ```
 
-Optional Expo support:
+Expo-only setup:
 
 ```bash
 npx @lsts_tech/infra init \
   --project myapp \
   --domain example.com \
-  --repo myorg/myrepo \
-  --pipelines production,dev,mobile \
-  --with-expo
+  --repo myorg/mobile \
+  --profile expo-web \
+  --pipelines production,mobile
 ```
 
 ### 2. Review generated files
@@ -57,30 +57,47 @@ npx @lsts_tech/infra init \
 - `sst.config.ts`
 - `sst-env.d.ts`
 - `infra.config.ts`
+- `package.json`
+- `tsconfig.json`
+- `.gitignore`
 - `.env.example`
 - `buildspec.yml`
 - `schemas/secrets.schema.json`
 - `scripts/ensure-pipelines.sh`
+- `scripts/predeploy-checks.sh`
+- `scripts/postdeploy-update-dns.sh`
+- `scripts/sst-deploy.sh`
+- `scripts/ensure-secrets.sh`
+- `config/pipelines.example.json`
+- `config/private.example.json`
 
 ### 3. Configure environment and secrets
 
-Use `.env.example` as the variable contract for your CI/local environment.
-
-Set minimum SST secrets:
-
 ```bash
-npx sst secrets set DatabaseUrl "postgresql://..." --stage dev
-npx sst secrets set AuthSecret "replace-me" --stage dev
+cp .env.example .env
 ```
 
-### 4. Deploy
+Set minimum SST secrets for Next.js profiles:
+
+```bash
+npx sst secret set DatabaseUrl "postgresql://..." --stage dev
+npx sst secret set AuthSecret "replace-me" --stage dev
+```
+
+### 4. Validate setup
+
+```bash
+npx @lsts_tech/infra doctor --target .
+```
+
+### 5. Deploy app infrastructure
 
 ```bash
 npx sst deploy --stage dev
 npx sst deploy --stage production
 ```
 
-### 5. Ensure pipelines
+### 6. Create/update pipelines explicitly
 
 ```bash
 APPROVE=true bash scripts/ensure-pipelines.sh
@@ -88,68 +105,32 @@ APPROVE=true bash scripts/ensure-pipelines.sh
 
 ## CLI
 
-### `init`
-
 ```bash
-npx @lsts_tech/infra init [options]
+npx @lsts_tech/infra <command> [options]
 ```
 
-| Option | Description | Default |
-|---|---|---|
-| `--provider <name>` | Cloud provider (`aws`) | `aws` |
-| `--project <slug>` | Project/app prefix | `myapp` |
-| `--app-name <name>` | SST app name | `--project` |
-| `--domain <domain>` | Root domain | `example.com` |
-| `--repo <owner/repo>` | GitHub repo for pipeline source | `myorg/myrepo` |
-| `--pipelines <list>` | `production,dev,mobile` CSV or `none` | `production,dev` |
-| `--branch-prod <branch>` | Production branch | `main` |
-| `--branch-dev <branch>` | Dev branch | `develop` |
-| `--branch-mobile <branch>` | Mobile branch | `mobile` |
-| `--with-expo` | Enable Expo scaffold defaults | `false` |
-| `--infra-path <path>` | Infra path from monorepo root | `packages/infra` |
-| `--target <path>` | Output directory | `.` |
-| `--force` | Overwrite existing files | `false` |
+Commands:
 
-Full CLI docs: [docs/CLI.md](./docs/CLI.md)
+- `init` — scaffold infra project files
+- `doctor` — validate Route53/ACM/CodeStar/branch/domain config before deploy
 
-## API Reference
+Full reference: [docs/CLI.md](./docs/CLI.md)
 
-### `resolveDomain(config: DnsConfig): DomainResult`
+## API
 
-Stage-aware domain resolution.
+- `resolveDomain(config: DnsConfig): DomainResult`
+- `createNextSite(config: NextSiteConfig): { site, url }`
+- `createExpoSite(config: ExpoSiteConfig): { site, url }`
+- `createPipeline(config: PipelineConfig): PipelineResult`
 
-### `createNextSite(config: NextSiteConfig): { site, url }`
-
-Creates an SST `aws.Nextjs` deployment.
-
-### `createExpoSite(config: ExpoSiteConfig): { site, url }`
-
-Creates an SST `aws.StaticSite` deployment for Expo web exports.
-
-### `createPipeline(config: PipelineConfig): PipelineResult`
-
-Creates an AWS CodePipeline + CodeBuild deployment pipeline.
-
-## Scripts Included
-
-| Script | Purpose |
-|---|---|
-| `scripts/predeploy-checks.sh` | DNS/CloudFront/ACM pre-deploy checks |
-| `scripts/postdeploy-update-dns.sh` | Route53 alias synchronization |
-| `scripts/ensure-secrets.sh` | SST secret provisioning from schema |
-| `scripts/sst-deploy.sh` | CI-safe SST deploy wrapper |
-| `scripts/ensure-pipelines.sh` | Ensure configured pipelines exist |
-| `scripts/pulumi-deploy.sh` | CI-safe Pulumi deploy wrapper |
-| `scripts/cleanup-orphan-lambdas.sh` | Cleanup stale Lambda functions |
-| `scripts/delete-amplify-app.sh` | Remove legacy Amplify apps |
-
-## Examples and Docs
+## Docs and Examples
 
 - Configuration guide: [docs/CONFIGURATION.md](./docs/CONFIGURATION.md)
-- CLI guide: [docs/CLI.md](./docs/CLI.md)
+- CLI reference: [docs/CLI.md](./docs/CLI.md)
 - Example index: [docs/EXAMPLES.md](./docs/EXAMPLES.md)
 - Next-only example: [examples/next-only/infra.config.ts](./examples/next-only/infra.config.ts)
 - Next + Expo example: [examples/next-and-expo/infra.config.ts](./examples/next-and-expo/infra.config.ts)
+- Delegated subdomain example: [examples/delegated-subdomain/infra.config.ts](./examples/delegated-subdomain/infra.config.ts)
 
 ## Publish Checklist
 
@@ -158,7 +139,7 @@ Before publishing to npm:
 1. `npm run build`
 2. `npm run check-types`
 3. `npm pack --dry-run`
-4. Verify tarball has no project-private infra/state files
+4. Verify tarball contains no private state/secrets (`.env`, `.sst`, Pulumi state)
 
 ## License
 

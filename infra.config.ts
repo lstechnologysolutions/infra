@@ -28,6 +28,7 @@ const pipelineRepo = process.env.INFRA_PIPELINE_REPO ?? "myorg/myrepo";
 const pipelinePrefix = process.env.INFRA_PIPELINE_PREFIX ?? "myapp";
 const pipelineProjectTag = process.env.INFRA_PROJECT_TAG ?? "myapp";
 const appName = process.env.INFRA_APP_NAME ?? "myapp";
+const useExternalCerts = (process.env.INFRA_USE_EXTERNAL_CERTS ?? "false") === "true";
 
 const webStageMap: Record<string, string> = {
     production: process.env.INFRA_WEB_DOMAIN_PRODUCTION ?? rootDomain,
@@ -55,6 +56,7 @@ const expoCerts: Record<string, string | undefined> = {
 
 const commonBuildEnv = {
     INFRA_APP_NAME: appName,
+    INFRA_USE_EXTERNAL_CERTS: useExternalCerts ? "true" : "false",
     INFRA_ROOT_DOMAIN: rootDomain,
     INFRA_PIPELINE_REPO: pipelineRepo,
     INFRA_PIPELINE_PREFIX: pipelinePrefix,
@@ -97,7 +99,7 @@ export function createInfrastructure() {
         appPath: "../../apps/web",
         id: `web-${stage}`,
         domain,
-        certificateArn: webCerts[stage],
+        certificateArn: useExternalCerts ? webCerts[stage] : undefined,
         environment: {
             NEXT_PUBLIC_APP_URL: `https://${domainName}`,
             // Explicitly reference a secret so it is provisioned and linked.
@@ -122,7 +124,7 @@ export function createInfrastructure() {
         appPath: "../../apps/mobile",
         id: `mobile-${stage}`,
         domain: mobileDomain,
-        certificateArn: expoCerts[stage],
+        certificateArn: useExternalCerts ? expoCerts[stage] : undefined,
         environment: {
             EXPO_PUBLIC_API_URL: `https://${domainName}/api`,
         },

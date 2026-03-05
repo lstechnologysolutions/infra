@@ -1,19 +1,27 @@
 import { resolveDomain, createNextSite, createExpoSite, createPipeline } from "@lsts_tech/infra";
 
+type PipelineStage = "production" | "dev" | "mobile";
+
 const secrets = {
   DatabaseUrl: new sst.Secret("DatabaseUrl"),
   AuthSecret: new sst.Secret("AuthSecret"),
 };
 
+const rootDomain = process.env.INFRA_ROOT_DOMAIN ?? "example.com";
+const hostedZoneDomain = process.env.INFRA_HOSTED_ZONE_DOMAIN || undefined;
+const createPipelines = (process.env.INFRA_CREATE_PIPELINES ?? "false") === "true";
+const pipelinePermissionsMode =
+  process.env.INFRA_PIPELINE_PERMISSIONS_MODE === "least-privilege" ? "least-privilege" : "admin";
+
 export function createInfrastructure() {
   const stage = $app.stage;
-  const rootDomain = process.env.INFRA_ROOT_DOMAIN ?? "example.com";
   const repo = process.env.INFRA_PIPELINE_REPO ?? "myorg/myrepo";
   const prefix = process.env.INFRA_PIPELINE_PREFIX ?? "myapp";
 
   const webDomain = resolveDomain({
     rootDomain,
     stage,
+    hostedZoneDomain,
     stageMap: {
       production: process.env.INFRA_WEB_DOMAIN_PRODUCTION ?? rootDomain,
       dev: process.env.INFRA_WEB_DOMAIN_DEV ?? `dev.${rootDomain}`,
@@ -40,6 +48,7 @@ export function createInfrastructure() {
   const expoDomain = resolveDomain({
     rootDomain,
     stage,
+    hostedZoneDomain,
     stageMap: {
       production: process.env.INFRA_EXPO_DOMAIN_PRODUCTION ?? `mobile.${rootDomain}`,
       dev: process.env.INFRA_EXPO_DOMAIN_DEV ?? `dev.mobile.${rootDomain}`,
@@ -68,36 +77,32 @@ export function createInfrastructure() {
     mobileDomain: expoDomain.domainName,
   };
 
-  if (stage === "production") {
-    const production = createPipeline({
-      name: `${prefix}-prod`,
-      repo,
-      branch: process.env.INFRA_PIPELINE_BRANCH_PROD ?? "main",
-      stage: "production",
-      projectTag: process.env.INFRA_PROJECT_TAG ?? prefix,
-    });
+  if (stage === "production" && createPipelines) {
+    const selected = (process.env.INFRA_PIPELINES ?? "production,dev,mobile")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value): value is PipelineStage => value === "production" || value === "dev" || value === "mobile");
 
-    const dev = createPipeline({
-      name: `${prefix}-dev`,
-      repo,
-      branch: process.env.INFRA_PIPELINE_BRANCH_DEV ?? "develop",
-      stage: "dev",
-      projectTag: process.env.INFRA_PROJECT_TAG ?? prefix,
-    });
+    for (const pipelineStage of selected) {
+      const suffix = pipelineStage === "production" ? "prod" : pipelineStage;
+      const branch =
+        pipelineStage === "production"
+          ? process.env.INFRA_PIPELINE_BRANCH_PROD ?? "main"
+          : pipelineStage === "dev"
+            ? process.env.INFRA_PIPELINE_BRANCH_DEV ?? "develop"
+            : process.env.INFRA_PIPELINE_BRANCH_MOBILE ?? "mobile";
 
-    const mobile = createPipeline({
-      name: `${prefix}-mobile`,
-      repo,
-      branch: process.env.INFRA_PIPELINE_BRANCH_MOBILE ?? "mobile",
-      stage: "mobile",
-      projectTag: process.env.INFRA_PROJECT_TAG ?? prefix,
-    });
+      const pipeline = createPipeline({
+        name: `${prefix}-${suffix}`,
+        repo,
+        branch,
+        stage: pipelineStage,
+        projectTag: process.env.INFRA_PROJECT_TAG ?? prefix,
+        permissionsMode: pipelinePermissionsMode,
+      });
 
-    outputs.pipelines = {
-      production: production.pipelineName,
-      dev: dev.pipelineName,
-      mobile: mobile.pipelineName,
-    };
+      outputs[`${pipelineStage}PipelineName`] = pipeline.pipelineName;
+    }
   }
 
   return outputs;

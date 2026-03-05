@@ -1,0 +1,19 @@
+{
+  "pipelines": {
+    "production": {
+      "enabled": true,
+      "branch": "__BRANCH_PROD__",
+      "repo": "__PIPELINE_REPO__"
+    },
+    "dev": {
+      "enabled": true,
+      "branch": "__BRANCH_DEV__",
+      "repo": "__PIPELINE_REPO__"
+    },
+    "mobile": {
+      "enabled": false,
+      "branch": "__BRANCH_MOBILE__",
+      "repo": "__PIPELINE_REPO__"
+    }
+  }
+}

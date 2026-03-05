@@ -1,0 +1,25 @@
+{
+  "name": "__PROJECT_PREFIX__-infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "sst dev",
+    "deploy": "sst deploy",
+    "deploy:dev": "sst deploy --stage dev",
+    "deploy:prod": "sst deploy --stage production",
+    "doctor": "npx @lsts_tech/infra doctor --target .",
+    "ensure:pipelines": "APPROVE=true bash scripts/ensure-pipelines.sh",
+    "ensure:secrets": "bash scripts/ensure-secrets.sh dev"
+  },
+  "dependencies": {
+    "@lsts_tech/infra": "__INFRA_VERSION__",
+    "sst": "^3.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

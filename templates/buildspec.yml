@@ -17,6 +17,11 @@ env:
     DOMAIN_DEV: "dev.__ROOT_DOMAIN__"
     DOMAIN_MOBILE: "mobile.__ROOT_DOMAIN__"
 
+    # Pipeline safety defaults
+    INFRA_CREATE_PIPELINES: "false"
+    INFRA_PIPELINE_PERMISSIONS_MODE: "__PIPELINE_PERMISSIONS_MODE__"
+    INFRA_PIPELINES_CONFIG_PATH: "config/pipelines.json"
+
     # Check controls
     SKIP_DNS_CHECK: "false"
     AUTO_REMOVE_CONFLICTING_DNS: "true"
@@ -39,6 +44,19 @@ phases:
       - echo "Node     = $(node --version)"
       - echo "pnpm     = $(pnpm --version)"
       - echo "Infra    = ${INFRA_PATH}"
+      - echo "Running infra doctor"
+      - |
+        if [ -f "${INFRA_PATH}/dist/bin/init.js" ]; then
+          node "${INFRA_PATH}/dist/bin/init.js" doctor --target "${INFRA_PATH}" || (echo "infra doctor failed" && exit 1)
+        elif [ -f "${INFRA_PATH}/bin/init.ts" ]; then
+          echo "Building local infra CLI for doctor..."
+          (cd "${INFRA_PATH}" && pnpm run build)
+          node "${INFRA_PATH}/dist/bin/init.js" doctor --target "${INFRA_PATH}" || (echo "infra doctor failed" && exit 1)
+        elif [ -f "./node_modules/@lsts_tech/infra/dist/bin/init.js" ]; then
+          node "./node_modules/@lsts_tech/infra/dist/bin/init.js" doctor --target "${INFRA_PATH}" || (echo "infra doctor failed" && exit 1)
+        else
+          echo "Could not locate an infra doctor binary." && exit 1
+        fi
       - echo "Running pre-deploy checks..."
       - |
         if [ -f "${INFRA_PATH}/scripts/predeploy-checks.sh" ]; then
@@ -58,6 +76,11 @@ phases:
 
   post_build:
     commands:
+      - |
+        if [ "${CODEBUILD_BUILD_SUCCEEDING:-0}" != "1" ]; then
+          echo "Build failed; skipping post-deploy DNS sync."
+          exit 0
+        fi
       - echo "SST deploy completed for stage ${SST_STAGE}"
       - echo "Running post-deploy DNS sync"
       - |

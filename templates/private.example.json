@@ -1,0 +1,13 @@
+{
+  "notes": "Copy this file to config/private.json and keep it untracked.",
+  "secrets": {
+    "DatabaseUrl": "postgresql://username:password@host:5432/database",
+    "AuthSecret": "replace-with-secure-random-value"
+  },
+  "deploy": {
+    "region": "us-east-1",
+    "tags": {
+      "Project": "__PROJECT_PREFIX__"
+    }
+  }
+}

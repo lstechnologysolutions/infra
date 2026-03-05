@@ -27,6 +27,10 @@ env:
     DOMAIN_PRODUCTION: "example.com"
     DOMAIN_DEV: "dev.example.com"
     DOMAIN_MOBILE: "mobile.example.com"
+    # Pipeline safety defaults (do not mutate CI/CD on normal deploys)
+    INFRA_CREATE_PIPELINES: "false"
+    INFRA_PIPELINE_PERMISSIONS_MODE: "admin"
+    INFRA_PIPELINES_CONFIG_PATH: "config/pipelines.json"
     # Polling for CloudFront distribution deployment (seconds)
     POLL_TIMEOUT: "600"
     POLL_INTERVAL: "15"
@@ -64,6 +68,19 @@ phases:
       - echo "Node     = $(node --version)"
       - echo "pnpm     = $(pnpm --version)"
       - echo "Infra    = ${INFRA_PATH}"
+      - echo "Running infra doctor..."
+      - |
+        if [ -f "${INFRA_PATH}/dist/bin/init.js" ]; then
+          node "${INFRA_PATH}/dist/bin/init.js" doctor --target "${INFRA_PATH}" || (echo "infra doctor failed" && exit 1)
+        elif [ -f "${INFRA_PATH}/bin/init.ts" ]; then
+          echo "Building local infra CLI for doctor..."
+          (cd "${INFRA_PATH}" && pnpm run build)
+          node "${INFRA_PATH}/dist/bin/init.js" doctor --target "${INFRA_PATH}" || (echo "infra doctor failed" && exit 1)
+        elif [ -f "./node_modules/@lsts_tech/infra/dist/bin/init.js" ]; then
+          node "./node_modules/@lsts_tech/infra/dist/bin/init.js" doctor --target "${INFRA_PATH}" || (echo "infra doctor failed" && exit 1)
+        else
+          echo "Could not locate an infra doctor binary." && exit 1
+        fi
       - echo "Running pre-deploy checks..."
       - |
         if [ -f "${INFRA_PATH}/scripts/predeploy-checks.sh" ]; then
@@ -80,37 +97,15 @@ phases:
     commands:
       # Deploy using SST from the infra package directory
       - cd ${INFRA_PATH}
-      - |
-        set +e
-        npx sst deploy --stage ${SST_STAGE}
-        DEPLOY_EXIT_CODE=$?
-        set -e
-        if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
-          echo "❌ SST deploy failed with exit code $DEPLOY_EXIT_CODE! Attempting to revert to previous state..."
-          
-          # CodePipeline might perform a shallow clone, so ensure we have history
-          git fetch --depth=2 || true
-          
-          # Checkout the previous commit
-          if git checkout HEAD^1; then
-            echo "📦 Re-installing dependencies for the previous commit..."
-            # Move back to root for pnpm install
-            cd ../..
-            pnpm install --frozen-lockfile || true
-            cd ${INFRA_PATH}
-            
-            echo "🔄 Rolling back deployment to previous commit..."
-            npx sst deploy --stage ${SST_STAGE} || echo "⚠️ Rollback deploy also failed!"
-          else
-            echo "⚠️ Could not checkout previous commit. Rollback skipped."
-          fi
-          
-          # Exit with the original failure code so the pipeline correctly reports as FAILED
-          exit $DEPLOY_EXIT_CODE
-        fi
+      - npx sst deploy --stage ${SST_STAGE}
 
   post_build:
     commands:
+      - |
+        if [ "${CODEBUILD_BUILD_SUCCEEDING:-0}" != "1" ]; then
+          echo "Build failed; skipping post-deploy DNS sync."
+          exit 0
+        fi
       - echo "✅ SST deploy completed for stage ${SST_STAGE}"
       - echo "Running post-deploy DNS sync"
       - |

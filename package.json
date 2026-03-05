@@ -1,6 +1,6 @@
 {
   "name": "@lsts_tech/infra",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Reusable SST v3 infrastructure constructs for deploying Next.js and Expo web apps from monorepos.",
   "type": "module",
   "license": "MIT",
@@ -53,6 +53,10 @@
     "./stacks/Pipeline": {
       "types": "./dist/stacks/Pipeline.d.ts",
       "import": "./dist/stacks/Pipeline.js"
+    },
+    "./auth": {
+      "types": "./dist/src/auth/index.d.ts",
+      "import": "./dist/src/auth/index.js"
     }
   },
   "bin": {
@@ -75,6 +79,7 @@
     "deploy": "sst deploy",
     "deploy:dev": "sst deploy --stage dev",
     "deploy:prod": "sst deploy --stage production",
+    "doctor": "node dist/bin/init.js doctor --target .",
     "remove": "sst remove",
     "console": "sst console",
     "secrets": "sst secrets",
@@ -88,9 +93,10 @@
     "registry": "https://registry.npmjs.org/"
   },
   "dependencies": {
-    "sst": "^3.7.0",
+    "@edcalderon/auth": "^1.2.1",
     "@pulumi/aws": "^6.66.0",
-    "@pulumi/pulumi": "^3.145.0"
+    "@pulumi/pulumi": "^3.145.0",
+    "sst": "^3.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",

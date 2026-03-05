@@ -6,4 +6,8 @@
 - [`next-and-expo/infra.config.ts`](../examples/next-and-expo/infra.config.ts)
   Next.js + Expo web static site + production/dev/mobile pipelines.
 
-Both examples are provider-scoped to AWS for v1.0.0.
+- [`delegated-subdomain/infra.config.ts`](../examples/delegated-subdomain/infra.config.ts)
+  Delegated subdomain deployment with explicit parent hosted zone fallback:
+  `airs.alternun.co` + `dev.airs.alternun.co` using hosted zone `alternun.co`.
+
+All examples are AWS-scoped for v1.x.

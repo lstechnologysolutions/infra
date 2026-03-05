@@ -1,23 +1,29 @@
 # Configuration Guide
 
-## Environment Variables
+## Core Environment Variables
 
 The scaffolded `infra.config.ts` is environment-driven.
 
 | Variable | Required | Description |
 |---|---|---|
+| `INFRA_PROFILE` | No | `next-only`, `next-expo`, `expo-web` |
 | `INFRA_APP_NAME` | No | SST app name |
+| `INFRA_USE_EXTERNAL_CERTS` | No | `true` to force use of `INFRA_*_CERT_ARN_*` values |
 | `INFRA_ROOT_DOMAIN` | Yes | Root domain for stage resolution |
+| `INFRA_HOSTED_ZONE_DOMAIN` | No | Explicit Route53 zone domain override (eg. `alternun.co`) |
 | `INFRA_PIPELINE_REPO` | No | GitHub repo in `owner/repo` format |
 | `INFRA_PIPELINE_PREFIX` | No | Prefix for pipeline names |
 | `INFRA_PROJECT_TAG` | No | Resource tag value |
-| `INFRA_PIPELINES` | No | Pipeline stages CSV: `production,dev,mobile` |
+| `INFRA_PIPELINES` | No | Pipeline stage CSV: `production,dev,mobile` |
 | `INFRA_PIPELINE_BRANCH_PROD` | No | Branch for production pipeline |
 | `INFRA_PIPELINE_BRANCH_DEV` | No | Branch for dev pipeline |
 | `INFRA_PIPELINE_BRANCH_MOBILE` | No | Branch for mobile pipeline |
-| `INFRA_ENABLE_EXPO_SITE` | No | `true` enables Expo `StaticSite` deploy |
+| `INFRA_PIPELINES_CONFIG_PATH` | No | Runtime pipeline config JSON path |
+| `INFRA_CREATE_PIPELINES` | No | `true` allows production deploy to create/update pipelines |
+| `INFRA_PIPELINE_PERMISSIONS_MODE` | No | `admin` or `least-privilege` for CodeBuild IAM |
+| `INFRA_ENABLE_EXPO_SITE` | No | `true` enables Expo site for `next-expo` profile |
 
-### Domain Overrides (Optional)
+## Domain Overrides (Optional)
 
 | Variable | Description |
 |---|---|
@@ -28,19 +34,7 @@ The scaffolded `infra.config.ts` is environment-driven.
 | `INFRA_EXPO_DOMAIN_DEV` | Expo dev domain |
 | `INFRA_EXPO_DOMAIN_MOBILE` | Expo mobile-stage domain |
 
-## DNS Helper Script Overrides
-
-These are consumed by `predeploy-checks.sh` and `postdeploy-update-dns.sh` (typically via `buildspec.yml`):
-
-| Variable | Description |
-|---|---|
-| `DOMAIN_ROOT` | Base/root domain |
-| `DOMAIN_PRODUCTION` | Explicit production domain override |
-| `DOMAIN_DEV` | Explicit dev domain override |
-| `DOMAIN_MOBILE` | Explicit mobile domain override |
-| `DOMAIN_CUSTOM` | Explicit override for non-standard stage names |
-
-### Certificate Reuse (Optional)
+## Certificate Reuse (Optional)
 
 | Variable | Description |
 |---|---|
@@ -51,9 +45,70 @@ These are consumed by `predeploy-checks.sh` and `postdeploy-update-dns.sh` (typi
 | `INFRA_EXPO_CERT_ARN_DEV` | Existing ACM cert ARN for expo dev domain |
 | `INFRA_EXPO_CERT_ARN_MOBILE` | Existing ACM cert ARN for expo mobile-stage domain |
 
+## Runtime Pipeline Config
+
+`INFRA_PIPELINES_CONFIG_PATH` defaults to `config/pipelines.json`.
+If present, `scripts/ensure-pipelines.sh` reads it to drive stage enablement/branches/repos.
+
+Example (`config/pipelines.json`):
+
+```json
+{
+  "pipelines": {
+    "production": { "enabled": true, "branch": "main", "repo": "myorg/web" },
+    "dev": { "enabled": true, "branch": "develop", "repo": "myorg/web" },
+    "mobile": { "enabled": false, "branch": "mobile", "repo": "myorg/mobile" }
+  }
+}
+```
+
+## Pipeline Mutation Safety
+
+Normal deploys should keep:
+
+```bash
+INFRA_CREATE_PIPELINES=false
+```
+
+To intentionally create/update pipelines:
+
+```bash
+APPROVE=true bash scripts/ensure-pipelines.sh
+```
+
+This script flips `INFRA_CREATE_PIPELINES=true` only for explicit pipeline-creation deploys.
+
+## Delegated Subdomain / Parent Zone Setup
+
+For setups like:
+
+- app domain: `airs.alternun.co`
+- stage domain: `dev.airs.alternun.co`
+- hosted zone available in AWS: `alternun.co`
+
+set:
+
+```bash
+INFRA_ROOT_DOMAIN=airs.alternun.co
+INFRA_HOSTED_ZONE_DOMAIN=alternun.co
+```
+
+Helper scripts also fallback to parent zones automatically during Route53 checks/updates.
+
+## Local Private Config
+
+Scaffolded defaults include:
+
+- `config/private.example.json`
+- `.gitignore` rules:
+  - `config/*.json`
+  - `!config/*.example.json`
+
+Use `config/private.json` for local-only deployment metadata/secrets (never commit it).
+
 ## SST Secrets
 
-Minimum secrets from the default template:
+Minimum secrets from Next.js templates:
 
 - `DatabaseUrl`
 - `AuthSecret`
@@ -61,18 +116,6 @@ Minimum secrets from the default template:
 Set per stage:
 
 ```bash
-npx sst secrets set DatabaseUrl "postgresql://..." --stage dev
-npx sst secrets set AuthSecret "your-secret" --stage dev
+npx sst secret set DatabaseUrl "postgresql://..." --stage dev
+npx sst secret set AuthSecret "your-secret" --stage dev
 ```
-
-## Pipeline Provisioning
-
-1. Ensure your `INFRA_PIPELINES` and branch variables are correct.
-2. Deploy once (`sst deploy`) from the infra package.
-3. Run:
-
-```bash
-APPROVE=true bash scripts/ensure-pipelines.sh
-```
-
-This script checks for missing pipelines and creates them by running stage-specific SST deploys.

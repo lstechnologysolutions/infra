@@ -105,6 +105,14 @@ export interface PipelineConfig {
    * @default name prefix (e.g., "myapp")
    */
   projectTag?: string;
+
+  /**
+   * Controls IAM policy breadth for the CodeBuild role.
+   * - "admin": attach AWS managed AdministratorAccess (fastest setup)
+   * - "least-privilege": attach a curated SST deploy action set
+   * @default "admin"
+   */
+  permissionsMode?: "admin" | "least-privilege";
 }
 
 /**
@@ -134,6 +142,7 @@ export function createPipeline(config: PipelineConfig) {
     timeoutMinutes = 30,
     codestarConnectionArn,
     projectTag,
+    permissionsMode = "admin",
   } = config;
 
   // ── 1. CodeStar Connection (GitHub) ──────────────────────────────────
@@ -199,12 +208,64 @@ export function createPipeline(config: PipelineConfig) {
     }),
   });
 
-  // CodeBuild needs broad permissions for SST deployments
-  // (CloudFormation, Lambda, S3, CloudFront, Route53, ACM, IAM, etc.)
-  new aws.iam.RolePolicyAttachment(`${name}-codebuild-admin`, {
-    role: codebuildRole.name,
-    policyArn: "arn:aws:iam::aws:policy/AdministratorAccess",
-  });
+  if (permissionsMode === "admin") {
+    // Fast-path mode for teams prioritizing setup speed over IAM strictness.
+    new aws.iam.RolePolicyAttachment(`${name}-codebuild-admin`, {
+      role: codebuildRole.name,
+      policyArn: "arn:aws:iam::aws:policy/AdministratorAccess",
+    });
+  } else {
+    // Least-privilege baseline for SST-driven app deploys.
+    // Teams can extend this policy if their stack uses additional AWS services.
+    new aws.iam.RolePolicy(`${name}-codebuild-least-privilege`, {
+      role: codebuildRole.id,
+      policy: $jsonStringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Action: [
+              "cloudformation:*",
+              "lambda:*",
+              "apigateway:*",
+              "logs:*",
+              "cloudwatch:*",
+              "events:*",
+              "sns:*",
+              "sqs:*",
+              "dynamodb:*",
+              "kms:*",
+              "ssm:*",
+              "secretsmanager:*",
+              "ecr:*",
+              "ecs:*",
+              "ec2:*",
+              "elasticloadbalancing:*",
+              "route53:*",
+              "acm:*",
+              "cloudfront:*",
+              "s3:*",
+              "iam:GetRole",
+              "iam:CreateRole",
+              "iam:DeleteRole",
+              "iam:PassRole",
+              "iam:AttachRolePolicy",
+              "iam:DetachRolePolicy",
+              "iam:PutRolePolicy",
+              "iam:DeleteRolePolicy",
+              "iam:TagRole",
+              "iam:UntagRole",
+              "iam:GetPolicy",
+              "iam:GetPolicyVersion",
+              "iam:ListRolePolicies",
+              "iam:ListAttachedRolePolicies",
+            ],
+            Resource: ["*"],
+          },
+        ],
+      }),
+    });
+  }
 
   // ── 4. IAM Role for CodePipeline ────────────────────────────────────
   const pipelineRole = new aws.iam.Role(`${name}-pipeline-role`, {
