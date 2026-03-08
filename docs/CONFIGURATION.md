@@ -55,7 +55,7 @@ Example (`config/pipelines.json`):
 ```json
 {
   "pipelines": {
-    "production": { "enabled": true, "branch": "main", "repo": "myorg/web" },
+    "production": { "enabled": true, "branch": "master", "repo": "myorg/web" },
     "dev": { "enabled": true, "branch": "develop", "repo": "myorg/web" },
     "mobile": { "enabled": false, "branch": "mobile", "repo": "myorg/mobile" }
   }

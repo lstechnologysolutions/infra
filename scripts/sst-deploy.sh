@@ -48,19 +48,31 @@ if [ -n "${DOMAIN:-}" ]; then
       aws cloudfront get-distribution-config --id "$DIST_ID" --output json > "$TMP_CFG"
       # Use python to safely remove the alias from the DistributionConfig and update Quantity
       python3 - <<PY
-import json,sys
-f='''$TMP_CFG'''
-out='''$TMP_CFG_MOD'''
-domain='''$DOMAIN'''
-obj=json.load(open(f))
-cfg=obj.get('DistributionConfig', {})
-aliases=cfg.get('Aliases', {})
-items=aliases.get('Items') or []
-new_items=[i for i in items if i != domain]
-aliases['Items']=new_items
-aliases['Quantity']=len(new_items)
-cfg['Aliases']=aliases
-json.dump(cfg, open(out, 'w'))
+import json
+with open('$TMP_CFG', 'r') as f:
+    obj = json.load(f)
+cfg = obj.get('DistributionConfig', {})
+aliases = cfg.get('Aliases', {})
+items = aliases.get('Items', [])
+new_items = [i for i in items if i != '$DOMAIN']
+cfg['Aliases'] = {'Quantity': len(new_items), 'Items': new_items}
+
+# If no aliases remain, we must reset the ViewerCertificate to default
+if len(new_items) == 0:
+    viewer_cert = cfg.get('ViewerCertificate', {})
+    if 'ACMCertificateArn' in viewer_cert:
+        del viewer_cert['ACMCertificateArn']
+    if 'IAMCertificateId' in viewer_cert:
+        del viewer_cert['IAMCertificateId']
+    if 'MinimumProtocolVersion' in viewer_cert:
+        del viewer_cert['MinimumProtocolVersion']
+    if 'SSLSupportMethod' in viewer_cert:
+        del viewer_cert['SSLSupportMethod']
+    viewer_cert['CloudFrontDefaultCertificate'] = True
+    cfg['ViewerCertificate'] = viewer_cert
+
+with open('$TMP_CFG_MOD', 'w') as f:
+    json.dump(obj, f)
 PY
       # update the distribution with the modified config
       if aws cloudfront update-distribution --id "$DIST_ID" --if-match "$ETAG" --distribution-config file://"$TMP_CFG_MOD" >/dev/null 2>&1; then

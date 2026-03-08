@@ -79,7 +79,7 @@ export function createInfrastructure() {
     for (const pipelineStage of selectedPipelines) {
       const branch =
         pipelineStage === "production"
-          ? process.env.INFRA_PIPELINE_BRANCH_PROD ?? "main"
+          ? process.env.INFRA_PIPELINE_BRANCH_PROD ?? "master"
           : pipelineStage === "dev"
             ? process.env.INFRA_PIPELINE_BRANCH_DEV ?? "develop"
             : process.env.INFRA_PIPELINE_BRANCH_MOBILE ?? "mobile";

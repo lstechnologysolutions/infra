@@ -33,7 +33,7 @@ type Provider = "aws";
 type DoctorStatus = "PASS" | "WARN" | "FAIL";
 
 const PIPELINE_DEFS: Record<PipelineStage, { suffix: string; defaultBranch: string }> = {
-  production: { suffix: "prod", defaultBranch: "main" },
+  production: { suffix: "prod", defaultBranch: "master" },
   dev: { suffix: "dev", defaultBranch: "develop" },
   mobile: { suffix: "mobile", defaultBranch: "mobile" },
 };
@@ -718,23 +718,23 @@ function runDoctor(flags: Record<string, string | boolean>) {
 
   const acmList = commandExists("aws")
     ? runAwsJson(
-        [
-          "acm",
-          "list-certificates",
-          "--region",
-          "us-east-1",
-          "--certificate-statuses",
-          "ISSUED",
-          "PENDING_VALIDATION",
-        ],
-        targetDir
-      )
+      [
+        "acm",
+        "list-certificates",
+        "--region",
+        "us-east-1",
+        "--certificate-statuses",
+        "ISSUED",
+        "PENDING_VALIDATION",
+      ],
+      targetDir
+    )
     : null;
 
   const acmDomains = Array.isArray(acmList?.CertificateSummaryList)
     ? acmList.CertificateSummaryList
-        .map((item: { DomainName?: string }) => item?.DomainName)
-        .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
+      .map((item: { DomainName?: string }) => item?.DomainName)
+      .filter((value: unknown): value is string => typeof value === "string" && value.length > 0)
     : [];
 
   for (const domain of Array.from(new Set(Object.keys(certMap))).filter(Boolean)) {

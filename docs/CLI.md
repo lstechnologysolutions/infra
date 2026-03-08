@@ -26,7 +26,7 @@ npx @lsts_tech/infra init [options]
 | `--domain <domain>` | Root domain | `example.com` |
 | `--repo <owner/repo>` | GitHub repo for pipeline source | `myorg/myrepo` |
 | `--pipelines <list>` | CSV: `production,dev,mobile` or `none` | `production,dev` |
-| `--branch-prod <branch>` | Production pipeline branch | `main` |
+| `--branch-prod <branch>` | Production pipeline branch | `master` |
 | `--branch-dev <branch>` | Dev pipeline branch | `develop` |
 | `--branch-mobile <branch>` | Mobile pipeline branch | `mobile` |
 | `--profile <name>` | `next-only` \| `next-expo` \| `expo-web` | `next-only` |

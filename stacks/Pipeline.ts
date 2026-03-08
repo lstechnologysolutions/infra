@@ -19,7 +19,7 @@
  * createPipeline({
  *   name: "myapp-prod",
  *   repo: "myorg/myapp",
- *   branch: "main",
+ *   branch: "master",
  *   stage: "production",
  *   region: "us-east-1",
  * });
@@ -41,7 +41,7 @@ export interface PipelineConfig {
 
   /**
    * The branch to watch for changes.
-   * @example "main" | "develop"
+   * @example "master" | "develop"
    */
   branch: string;
 

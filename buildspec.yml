@@ -92,12 +92,47 @@ phases:
         else
           echo "No predeploy checks script found at ${INFRA_PATH}/scripts/predeploy-checks.sh or ./scripts/predeploy-checks.sh"
         fi
+      - echo "Enforcing CI IAM role safety..."
+      - |
+        if [ "${INFRA_FORCE_ROLE_CREDENTIALS:-false}" = "true" ]; then
+          echo "INFRA_FORCE_ROLE_CREDENTIALS=true — clearing long-lived static AWS keys..."
+          unset AWS_ACCESS_KEY_ID
+          unset AWS_SECRET_ACCESS_KEY
+          unset AWS_SESSION_TOKEN
+        fi
 
   build:
     commands:
       # Deploy using SST from the infra package directory
       - cd ${INFRA_PATH}
-      - npx sst deploy --stage ${SST_STAGE}
+      - |
+        set +e
+        npx sst deploy --stage ${SST_STAGE}
+        DEPLOY_EXIT_CODE=$?
+        set -e
+        if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
+          echo "❌ SST deploy failed with exit code $DEPLOY_EXIT_CODE! Attempting to revert to previous state..."
+          
+          # CodePipeline might perform a shallow clone, so ensure we have history
+          git fetch --depth=2 || true
+          
+          # Checkout the previous commit
+          if git checkout HEAD^1; then
+            echo "📦 Re-installing dependencies for the previous commit..."
+            # Move back to root for pnpm install
+            cd ../..
+            pnpm install --frozen-lockfile || true
+            cd ${INFRA_PATH}
+            
+            echo "🔄 Rolling back deployment to previous commit..."
+            npx sst deploy --stage ${SST_STAGE} || echo "⚠️ Rollback deploy also failed!"
+          else
+            echo "⚠️ Could not checkout previous commit. Rollback skipped."
+          fi
+          
+          # Exit with the original failure code so the pipeline correctly reports as FAILED
+          exit $DEPLOY_EXIT_CODE
+        fi
 
   post_build:
     commands:

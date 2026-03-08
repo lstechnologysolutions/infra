@@ -61,7 +61,7 @@ const commonBuildEnv = {
     INFRA_PIPELINE_REPO: pipelineRepo,
     INFRA_PIPELINE_PREFIX: pipelinePrefix,
     INFRA_PROJECT_TAG: pipelineProjectTag,
-    INFRA_PIPELINE_BRANCH_PROD: process.env.INFRA_PIPELINE_BRANCH_PROD ?? "main",
+    INFRA_PIPELINE_BRANCH_PROD: process.env.INFRA_PIPELINE_BRANCH_PROD ?? "master",
     INFRA_PIPELINE_BRANCH_DEV: process.env.INFRA_PIPELINE_BRANCH_DEV ?? "develop",
     INFRA_PIPELINE_BRANCH_MOBILE: process.env.INFRA_PIPELINE_BRANCH_MOBILE ?? "mobile",
     INFRA_WEB_DOMAIN_PRODUCTION: webStageMap.production,
@@ -138,7 +138,7 @@ export function createInfrastructure() {
         const prodPipeline = createPipeline({
             name: `${pipelinePrefix}-prod`,
             repo: pipelineRepo,
-            branch: process.env.INFRA_PIPELINE_BRANCH_PROD ?? "main",
+            branch: process.env.INFRA_PIPELINE_BRANCH_PROD ?? "master",
             stage: "production",
             projectTag: pipelineProjectTag,
             buildEnv: commonBuildEnv,

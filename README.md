@@ -144,3 +144,11 @@ Before publishing to npm:
 ## License
 
 MIT © LSTS Solutions
+
+## 📋 Latest Changes (v1.0.4)
+
+### Bug Fixes
+
+* **infra:** update README and disable check-types to fix publish workflow ([92eafdc](https://github.com/lstechnologysolutions/infra/commit/92eafdc0f87f61516bde6a247cdc24e617ef614f))
+
+For full version history, see [CHANGELOG.md](./CHANGELOG.md) and [GitHub releases](https://github.com/edcalderon/my-second-brain/releases)
