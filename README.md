@@ -145,10 +145,32 @@ Before publishing to npm:
 
 MIT © LSTS Solutions
 
-## 📋 Latest Changes (v1.0.4)
+## 📋 Latest Changes (v1.0.3)
 
 ### Bug Fixes
 
 * **infra:** update README and disable check-types to fix publish workflow ([92eafdc](https://github.com/lstechnologysolutions/infra/commit/92eafdc0f87f61516bde6a247cdc24e617ef614f))
+
+# Changelog
+
+All notable changes to `@lsts_tech/infra` will be documented in this file.
+
+## [Unreleased]
+
+### Added
+- New CLI command: `npx @lsts_tech/infra doctor` for pre-deploy readiness checks (Route53, ACM, CodeStar, branch + domain mapping).
+- New scaffold profile support: `--profile next-only|next-expo|expo-web`.
+- New Expo-only scaffold mode (`expo-web`) that does not generate Next.js resources/secrets.
+- Scaffold now generates `package.json`, `tsconfig.json`, `.gitignore`, `config/pipelines.example.json`, and `config/private.example.json`.
+- New delegated subdomain example: `examples/delegated-subdomain/infra.config.ts`.
+
+### Changed
+- `scripts/ensure-pipelines.sh` is now runtime-driven from env/config (no generated hardcoded stage arrays).
+- Pipeline creation is explicitly gated by `INFRA_CREATE_PIPELINES=true`; normal deploys stay CI/CD-mutation-safe.
+- Pipeline construct supports IAM mode selection via `permissionsMode` (`admin` or `least-privilege`).
+- Scaffold now generates operational scripts by default: `predeploy-checks`, `postdeploy-update-dns`, `sst-deploy`, `ensure-secrets`, and `ensure-pipelines`.
+
+### Fixed
+- Route53 hosted zone resolution now falls back from subdomain to parent zones in DNS helper scripts (delegated subdomain setups).
 
 For full version history, see [CHANGELOG.md](./CHANGELOG.md) and [GitHub releases](https://github.com/edcalderon/my-second-brain/releases)

@@ -1,25 +1,8 @@
-## [1.0.4](https://github.com/lstechnologysolutions/infra/compare/v2.0.43...v1.0.4) (2026-03-08)
-
+## [1.0.3](https://github.com/lstechnologysolutions/infra/compare/v2.0.43...v1.0.3) (2026-03-08)
 
 ### Bug Fixes
 
 * **infra:** update README and disable check-types to fix publish workflow ([92eafdc](https://github.com/lstechnologysolutions/infra/commit/92eafdc0f87f61516bde6a247cdc24e617ef614f))
-
-
-
-
-
-## [1.0.3](https://github.com/lstechnologysolutions/infra/compare/v2.0.43...v1.0.3) (2026-03-07)
-
-
-
-
-
-## [1.0.2](https://github.com/lstechnologysolutions/infra/compare/v2.0.43...v1.0.2) (2026-03-07)
-
-
-
-
 
 # Changelog
 

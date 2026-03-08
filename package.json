@@ -1,6 +1,6 @@
 {
   "name": "@lsts_tech/infra",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "description": "Reusable SST v3 infrastructure constructs for deploying Next.js and Expo web apps from monorepos.",
   "type": "module",
   "license": "MIT",
