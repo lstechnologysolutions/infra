@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   REDACTED,
   isSensitiveKey,
   redactObject,
   redactString,
 } from "./redact.js";
+import { Logger, LogLevel, createLogger, logger } from "./logger.js";
 
 // ── isSensitiveKey ────────────────────────────────────────────────────────────
 
@@ -43,10 +44,18 @@ describe("isSensitiveKey", () => {
     "neo4j_password",
     "oidc_secret",
     "oidc_client_secret",
+    "anonKey",
+    "anon_key",
     // Case-insensitive variants
     "PASSWORD",
     "ApiKey",
     "DATABASE_URL",
+    // Compound names containing sensitive words — caught via substring match
+    "myPasswordField",
+    "secretAccessKey",
+    "secret_access_key",
+    "authToken",
+    "auth_token",
   ])("treats %s as sensitive", (key) => {
     expect(isSensitiveKey(key)).toBe(true);
   });
@@ -72,15 +81,15 @@ describe("isSensitiveKey", () => {
 // ── redactString ─────────────────────────────────────────────────────────────
 
 describe("redactString", () => {
-  it("redacts credentials in http URLs", () => {
+  it("redacts password in http URLs, preserving scheme and username", () => {
     expect(redactString("http://user:hunter2@example.com/path")).toBe(
-      `http://${REDACTED}@example.com/path`,
+      `http://user:${REDACTED}@example.com/path`,
     );
   });
 
-  it("redacts credentials in https URLs", () => {
-    expect(redactString("https://admin:s3cr3t@neo4j.internal/db")).toBe(
-      `https://${REDACTED}@neo4j.internal/db`,
+  it("redacts password in https URLs, preserving scheme and username", () => {
+    expect(redactString("https://neo4j:s3cr3t@neo4j.internal/db")).toBe(
+      `https://neo4j:${REDACTED}@neo4j.internal/db`,
     );
   });
 
@@ -89,11 +98,29 @@ describe("redactString", () => {
     expect(redactString(url)).toBe(url);
   });
 
-  it("redacts credentials embedded in a longer message", () => {
+  it("redacts password in a URL embedded in a longer message", () => {
     const input =
       "Connecting to https://root:password123@db.internal:5432/app now";
     expect(redactString(input)).toBe(
-      `Connecting to https://${REDACTED}@db.internal:5432/app now`,
+      `Connecting to https://root:${REDACTED}@db.internal:5432/app now`,
+    );
+  });
+
+  it("redacts URL query parameters with sensitive key names", () => {
+    expect(
+      redactString("https://api.example.com/endpoint?token=secret123&page=1"),
+    ).toBe(`https://api.example.com/endpoint?token=${REDACTED}&page=1`);
+  });
+
+  it("redacts inline key=value assignments in text", () => {
+    expect(redactString("databaseUrl: postgres://host/db")).toBe(
+      `databaseUrl: ${REDACTED}`,
+    );
+  });
+
+  it("redacts inline key=value with = separator", () => {
+    expect(redactString("password=hunter2 stage=production")).toBe(
+      `password=${REDACTED} stage=production`,
     );
   });
 
@@ -221,4 +248,140 @@ describe("redactObject", () => {
   it("handles empty arrays", () => {
     expect(redactObject([])).toEqual([]);
   });
+
+  it("replaces circular references with [Circular]", () => {
+    const obj: Record<string, unknown> = { stage: "dev" };
+    obj["self"] = obj;
+    const result = redactObject(obj) as Record<string, unknown>;
+    expect(result["stage"]).toBe("dev");
+    expect(result["self"]).toBe("[Circular]");
+  });
 });
+
+// ── Logger class ─────────────────────────────────────────────────────────────
+
+describe("Logger class", () => {
+  it("new Logger() redacts sensitive keys in context", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = new Logger({ level: "info", timestamps: false });
+    log.info("msg", { token: "abc", stage: "prod" });
+    expect(spy).toHaveBeenCalledWith(
+      `[INFO] msg {"token":"${REDACTED}","stage":"prod"}`,
+    );
+    spy.mockRestore();
+  });
+
+  it("new Logger() redacts sensitive inline text in the message", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = new Logger({ level: "info", timestamps: false });
+    log.info("https://neo4j:s3cr3t@neo4j.internal/db");
+    expect(spy).toHaveBeenCalledWith(
+      `[INFO] https://neo4j:${REDACTED}@neo4j.internal/db`,
+    );
+    spy.mockRestore();
+  });
+
+  it("includes a timestamp prefix when timestamps: true", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = new Logger({ level: "info", timestamps: true });
+    log.info("hello");
+    const call = spy.mock.calls[0][0] as string;
+    // ISO 8601 prefix followed by [INFO]
+    expect(call).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z \[INFO\]/);
+    spy.mockRestore();
+  });
+
+  it("does not include a timestamp when timestamps: false", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = new Logger({ level: "info", timestamps: false });
+    log.info("hello");
+    const call = spy.mock.calls[0][0] as string;
+    expect(call).toBe("[INFO] hello");
+    spy.mockRestore();
+  });
+
+  it("suppresses messages below the configured level", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = new Logger({ level: "warn", timestamps: false });
+    log.debug("hidden");
+    log.info("also hidden");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("LogLevel enum values are numeric and ordered correctly", () => {
+    expect(LogLevel.DEBUG).toBeLessThan(LogLevel.INFO);
+    expect(LogLevel.INFO).toBeLessThan(LogLevel.WARN);
+    expect(LogLevel.WARN).toBeLessThan(LogLevel.ERROR);
+  });
+
+  describe("child()", () => {
+    it("inherits parent context", () => {
+      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const parent = new Logger(
+        { level: "info", timestamps: false },
+        { service: "api" },
+      );
+      const child = parent.child({ handler: "auth" });
+      child.info("login");
+      expect(spy).toHaveBeenCalledWith(
+        '[INFO] login {"service":"api","handler":"auth"}',
+      );
+      spy.mockRestore();
+    });
+
+    it("child context overrides parent context for same key", () => {
+      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const parent = new Logger(
+        { level: "info", timestamps: false },
+        { stage: "dev" },
+      );
+      const child = parent.child({ stage: "prod" });
+      child.info("deploy");
+      expect(spy).toHaveBeenCalledWith('[INFO] deploy {"stage":"prod"}');
+      spy.mockRestore();
+    });
+
+    it("child redacts sensitive keys in merged context", () => {
+      const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const parent = new Logger(
+        { level: "info", timestamps: false },
+        { service: "db" },
+      );
+      const child = parent.child({ password: "s3cr3t" });
+      child.info("connecting");
+      expect(spy).toHaveBeenCalledWith(
+        `[INFO] connecting {"service":"db","password":"${REDACTED}"}`,
+      );
+      spy.mockRestore();
+    });
+  });
+});
+
+// ── createLogger factory ──────────────────────────────────────────────────────
+
+describe("createLogger", () => {
+  it("returns a Logger instance with redaction on by default", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = createLogger();
+    log.info("msg", { token: "abc" });
+    expect(spy).toHaveBeenCalledWith(`[INFO] msg {"token":"${REDACTED}"}`);
+    spy.mockRestore();
+  });
+
+  it("respects redact: false to skip sanitisation", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const log = createLogger({ redact: false });
+    log.info("msg", { token: "raw_value" });
+    expect(spy).toHaveBeenCalledWith('[INFO] msg {"token":"raw_value"}');
+    spy.mockRestore();
+  });
+
+  it("default logger export also redacts", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    logger.info("deploy", { apiKey: "key-123" });
+    expect(spy).toHaveBeenCalledWith(`[INFO] deploy {"apiKey":"${REDACTED}"}`);
+    spy.mockRestore();
+  });
+});
+

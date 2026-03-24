@@ -35,8 +35,8 @@
 export { resolveDomain } from "./Dns.js";
 export type { DnsConfig, DomainResult } from "./Dns.js";
 
-export { createLogger, logger } from "../src/logger.js";
-export type { Logger, LoggerOptions, LogLevel } from "../src/logger.js";
+export { createLogger, logger, Logger, LogLevel } from "../src/logger.js";
+export type { LoggerOptions, LoggingConfig, LogLevelString } from "../src/logger.js";
 
 export { isSensitiveKey, redactObject, redactString, REDACTED } from "../src/redact.js";
 

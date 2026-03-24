@@ -1,120 +1,253 @@
 /**
  * @lsts_tech/infra — Logger
  *
- * A lightweight structured logger with built-in secret redaction.
- * Redaction is enabled by default and applies to both structured context
- * objects and freeform message strings, so sensitive values never reach
- * CI logs or build output.
+ * A structured logger with built-in secret redaction, compatible with the
+ * downstream `Logger` class API used in ComputeIntelligenceGraph and similar
+ * consumers.  Redaction is enabled by default so every consumer gets the
+ * protection without any additional configuration.
  *
- * @example
+ * ## Class API (primary — matches downstream consumer)
  * ```ts
- * import { logger } from "@lsts_tech/infra/logger";
+ * import { Logger } from "@lsts_tech/infra/logger";
  *
- * // Structured context — sensitive keys are automatically redacted
- * logger.info("Deploying", { stage: "production", token: "abc123" });
- * // → [INFO] Deploying {"stage":"production","token":"[REDACTED]"}
+ * const log = new Logger({ level: "info", timestamps: true });
+ * log.info("Deploying", { stage: "prod", token: "abc123" });
+ * // → 2024-01-01T00:00:00.000Z [INFO] Deploying {"stage":"prod","token":"[REDACTED]"}
  *
- * // Freeform message — credentialed URLs and inline secrets are redacted
- * logger.warn("Retrying https://admin:s3cr3t@neo4j.internal/db");
- * // → [WARN] Retrying https://[REDACTED]@neo4j.internal/db
+ * // Child loggers inherit and extend parent context
+ * const child = log.child({ service: "api" });
+ * child.warn("Retrying", { attempt: 2 });
+ * ```
+ *
+ * ## Factory API (convenience — supports `redact: false` opt-out)
+ * ```ts
+ * import { createLogger, logger } from "@lsts_tech/infra/logger";
+ *
+ * logger.info("Deploying", { stage: "prod", token: "abc123" });
+ * // → [INFO] Deploying {"stage":"prod","token":"[REDACTED]"}
  * ```
  */
 
 import { redactObject, redactString } from "./redact.js";
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+// ── Log level ─────────────────────────────────────────────────────────────────
 
+/**
+ * Numeric log-level enum.  Matches the downstream Logger implementation so
+ * consumers can compare levels with `>=` without importing a string union.
+ */
+export enum LogLevel {
+  DEBUG = 0,
+  INFO = 1,
+  WARN = 2,
+  ERROR = 3,
+}
+
+/** String variant of log level used in configuration objects. */
+export type LogLevelString = "debug" | "info" | "warn" | "error";
+
+// ── Configuration interfaces ──────────────────────────────────────────────────
+
+/**
+ * Configuration accepted by `new Logger(config, context?)`.
+ * Mirrors the `LoggingConfig` interface used in downstream consumers.
+ */
+export interface LoggingConfig {
+  /** Minimum level to emit. Messages below this level are suppressed. */
+  level: LogLevelString;
+  /** When `true`, each line is prefixed with an ISO 8601 timestamp. */
+  timestamps: boolean;
+}
+
+/**
+ * Options accepted by the `createLogger` factory function.
+ * Extends `LoggingConfig` with an opt-out for secret redaction.
+ */
 export interface LoggerOptions {
+  /** Minimum level to emit. Defaults to `"info"`. */
+  level?: LogLevelString;
   /**
-   * Minimum log level to emit. Messages below this level are silenced.
-   * Defaults to `"info"`.
-   */
-  level?: LogLevel;
-  /**
-   * When `false`, disables secret redaction. Should only be used in
+   * When `false`, disables secret redaction.  Should only be used in
    * trusted local-only contexts where raw values are needed for debugging.
    * Defaults to `true`.
    */
   redact?: boolean;
+  /** When `true`, prefixes each line with an ISO 8601 timestamp. Defaults to `false`. */
+  timestamps?: boolean;
 }
 
-/** Structured logger interface exposed to consumers. */
-export interface Logger {
-  debug(message: string, context?: Record<string, unknown>): void;
-  info(message: string, context?: Record<string, unknown>): void;
-  warn(message: string, context?: Record<string, unknown>): void;
-  error(message: string, context?: Record<string, unknown>): void;
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseLogLevel(level: LogLevelString): LogLevel {
+  switch (level) {
+    case "debug":
+      return LogLevel.DEBUG;
+    case "info":
+      return LogLevel.INFO;
+    case "warn":
+      return LogLevel.WARN;
+    case "error":
+      return LogLevel.ERROR;
+    default:
+      return LogLevel.INFO;
+  }
 }
 
-const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-};
+function getLevelName(level: LogLevel): LogLevelString {
+  switch (level) {
+    case LogLevel.DEBUG:
+      return "debug";
+    case LogLevel.INFO:
+      return "info";
+    case LogLevel.WARN:
+      return "warn";
+    case LogLevel.ERROR:
+      return "error";
+    default:
+      return "info";
+  }
+}
+
+// ── Logger class ──────────────────────────────────────────────────────────────
 
 /**
- * Creates a logger instance with built-in secret redaction.
+ * Structured logger with built-in secret redaction.
+ *
+ * Compatible with the downstream `Logger` class API — construct with
+ * `new Logger(config, context?)` and use `child(context)` for scoped
+ * sub-loggers.
+ *
+ * @example
+ * ```ts
+ * const log = new Logger({ level: "info", timestamps: true });
+ * log.info("Deploying", { stage: "prod", token: "abc" });
+ * // → 2024-… [INFO] Deploying {"stage":"prod","token":"[REDACTED]"}
+ *
+ * const svc = log.child({ service: "auth" });
+ * svc.warn("Token refresh failed", { attempt: 3 });
+ * ```
+ */
+export class Logger {
+  private readonly _level: LogLevel;
+  private readonly _timestamps: boolean;
+  private readonly _context: Record<string, unknown>;
+  private readonly _redact: boolean;
+
+  /**
+   * @param config   Log level and timestamp settings.
+   * @param context  Optional base context merged into every log call.
+   * @internal The third parameter `_redact` is reserved for `createLogger`; do not pass it directly.
+   */
+  constructor(
+    config: LoggingConfig,
+    context?: Record<string, unknown>,
+    /** @internal */ _redact = true,
+  ) {
+    this._level = parseLogLevel(config.level);
+    this._timestamps = config.timestamps ?? false;
+    this._context = context ?? {};
+    this._redact = _redact;
+  }
+
+  /** Emit a debug-level message. */
+  debug(message: string, context?: Record<string, unknown>): void {
+    this._log(LogLevel.DEBUG, message, context);
+  }
+
+  /** Emit an info-level message. */
+  info(message: string, context?: Record<string, unknown>): void {
+    this._log(LogLevel.INFO, message, context);
+  }
+
+  /** Emit a warning-level message. */
+  warn(message: string, context?: Record<string, unknown>): void {
+    this._log(LogLevel.WARN, message, context);
+  }
+
+  /** Emit an error-level message. */
+  error(message: string, context?: Record<string, unknown>): void {
+    this._log(LogLevel.ERROR, message, context);
+  }
+
+  /**
+   * Creates a child logger that inherits this instance's level, timestamps,
+   * and context, then merges the provided `context` on top.
+   *
+   * @example
+   * ```ts
+   * const svc = log.child({ service: "payments" });
+   * svc.info("Charge initiated", { amount: 100 });
+   * // → [INFO] Charge initiated {"service":"payments","amount":100}
+   * ```
+   */
+  child(context: Record<string, unknown>): Logger {
+    return new Logger(
+      { level: getLevelName(this._level), timestamps: this._timestamps },
+      { ...this._context, ...context },
+      this._redact,
+    );
+  }
+
+  private _log(
+    level: LogLevel,
+    message: string,
+    context?: Record<string, unknown>,
+  ): void {
+    if (level < this._level) return;
+
+    const safeMessage = this._redact ? redactString(message) : message;
+    const mergedContext = { ...this._context, ...context };
+    const safeContext =
+      Object.keys(mergedContext).length > 0
+        ? this._redact
+          ? redactObject(mergedContext)
+          : mergedContext
+        : undefined;
+
+    const parts: string[] = [];
+    if (this._timestamps) parts.push(new Date().toISOString());
+    parts.push(`[${getLevelName(level).toUpperCase()}]`);
+    parts.push(safeMessage);
+    if (safeContext) parts.push(JSON.stringify(safeContext));
+
+    const output = parts.join(" ");
+    if (level >= LogLevel.ERROR) {
+      console.error(output);
+    } else if (level >= LogLevel.WARN) {
+      console.warn(output);
+    } else {
+      console.log(output);
+    }
+  }
+}
+
+// ── Factory function ──────────────────────────────────────────────────────────
+
+/**
+ * Creates a `Logger` instance.  Accepts a `redact: false` opt-out for
+ * trusted debug sessions.  Prefer `new Logger(config)` when constructing
+ * loggers that will always redact.
  *
  * @example
  * ```ts
  * // Custom log level, redaction still on
  * const log = createLogger({ level: "debug" });
  *
- * // Opt-out of redaction for a trusted local debug session
+ * // Opt-out of redaction for a local debug session only
  * const rawLog = createLogger({ redact: false });
  * ```
  */
 export function createLogger(options: LoggerOptions = {}): Logger {
-  const minLevel = options.level ?? "info";
-  const shouldRedact = options.redact !== false;
-  const minOrder = LOG_LEVEL_ORDER[minLevel];
-
-  function shouldEmit(level: LogLevel): boolean {
-    return LOG_LEVEL_ORDER[level] >= minOrder;
-  }
-
-  function sanitizeMessage(message: string): string {
-    return shouldRedact ? redactString(message) : message;
-  }
-
-  function sanitizeContext(
-    context?: Record<string, unknown>,
-  ): Record<string, unknown> | undefined {
-    if (!context) return undefined;
-    return shouldRedact ? redactObject(context) : context;
-  }
-
-  function emit(
-    level: LogLevel,
-    message: string,
-    context?: Record<string, unknown>,
-  ): void {
-    if (!shouldEmit(level)) return;
-
-    const safeMessage = sanitizeMessage(message);
-    const safeContext = sanitizeContext(context);
-    const prefix = `[${level.toUpperCase()}]`;
-    const output = safeContext
-      ? `${prefix} ${safeMessage} ${JSON.stringify(safeContext)}`
-      : `${prefix} ${safeMessage}`;
-
-    if (level === "error") {
-      console.error(output);
-    } else if (level === "warn") {
-      console.warn(output);
-    } else {
-      console.log(output);
-    }
-  }
-
-  return {
-    debug: (message, context) => emit("debug", message, context),
-    info: (message, context) => emit("info", message, context),
-    warn: (message, context) => emit("warn", message, context),
-    error: (message, context) => emit("error", message, context),
-  };
+  return new Logger(
+    {
+      level: options.level ?? "info",
+      timestamps: options.timestamps ?? false,
+    },
+    undefined,
+    options.redact !== false,
+  );
 }
 
-/** Default logger instance. Redaction is enabled by default. */
+/** Default logger instance — info level, redaction on, no timestamps. */
 export const logger: Logger = createLogger();
+
