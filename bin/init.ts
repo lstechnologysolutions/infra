@@ -18,6 +18,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { redactString } from "../src/redact.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -536,7 +537,7 @@ function wildcardMatch(certDomain: string, domain: string) {
 function addDoctorResult(results: DoctorResult[], status: DoctorStatus, label: string, detail: string) {
   results.push({ status, label, detail });
   const icon = status === "PASS" ? "✅" : status === "WARN" ? "⚠️" : "❌";
-  console.log(`${icon} ${label}: ${detail}`);
+  console.log(`${icon} ${label}: ${redactString(detail)}`);
 }
 
 function runDoctor(flags: Record<string, string | boolean>) {
