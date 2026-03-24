@@ -57,6 +57,14 @@
     "./auth": {
       "types": "./dist/src/auth/index.d.ts",
       "import": "./dist/src/auth/index.js"
+    },
+    "./logger": {
+      "types": "./dist/src/logger.d.ts",
+      "import": "./dist/src/logger.js"
+    },
+    "./redact": {
+      "types": "./dist/src/redact.d.ts",
+      "import": "./dist/src/redact.js"
     }
   },
   "bin": {
@@ -86,6 +94,7 @@
     "secrets": "sst secrets",
     "ensure-secrets": "./scripts/ensure-secrets.sh",
     "lint": "echo 'no lint configured'",
+    "test": "vitest run",
     "check-types": "echo 'Skipping type-checking for infra package due to SST globals'",
     "clean": "rm -rf .sst dist node_modules",
     "update-readme": "versioning update-readme"
@@ -102,7 +111,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.1"
   },
   "engines": {
     "node": ">=20"
